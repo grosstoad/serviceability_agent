@@ -1,0 +1,148 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=block');
+
+@import "tailwindcss";
+
+/* Newsprint Design System */
+:root {
+  --color-background: #F9F9F7;
+  --color-foreground: #111111;
+  --color-muted: #E5E5E0;
+  --color-accent: #CC0000;
+  --color-border: #111111;
+}
+
+/* Font family utilities */
+.font-serif {
+  font-family: 'Playfair Display', 'Times New Roman', serif;
+}
+
+.font-body {
+  font-family: 'Lora', Georgia, serif;
+}
+
+.font-sans {
+  font-family: 'Inter', 'Helvetica Neue', sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* Sharp corners utility */
+.sharp-corners,
+.sharp-corners * {
+  border-radius: 0px !important;
+}
+
+/* Hard shadow hover effect */
+.hard-shadow-hover {
+  transition: all 200ms ease-out;
+}
+
+.hard-shadow-hover:hover {
+  box-shadow: 4px 4px 0px 0px #111111;
+  transform: translate(-2px, -2px);
+}
+
+/* Newsprint texture overlay */
+.newsprint-texture {
+  position: relative;
+}
+
+.newsprint-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(0deg, transparent 98%, rgba(0,0,0,0.02) 100%),
+    linear-gradient(90deg, transparent 98%, rgba(0,0,0,0.02) 100%);
+  background-size: 3px 3px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Base styles */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: 'Inter', 'Helvetica Neue', sans-serif;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%23111111' fill-opacity='0.04' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+/* Focus states */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-foreground);
+}
+
+/* Typography utilities */
+.leading-tight-headline {
+  line-height: 0.9;
+}
+
+/* Drop cap */
+.drop-cap::first-letter {
+  float: left;
+  font-size: 4.5em;
+  line-height: 0.85;
+  padding-right: 0.1em;
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+}
+
+/* Grayscale images by default */
+.newsprint-image {
+  filter: grayscale(100%);
+  transition: filter 300ms ease-out;
+}
+
+.newsprint-image:hover {
+  filter: grayscale(0%) sepia(50%);
+}
+
+/* Input styles */
+input, select, textarea {
+  border-radius: 0 !important;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--color-foreground);
+  padding: 0.5rem 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  transition: all 200ms ease-out;
+}
+
+input:focus, select:focus, textarea:focus {
+  background-color: #F0F0F0;
+  outline: none;
+}
+
+/* Button base */
+button {
+  border-radius: 0 !important;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  transition: all 200ms ease-out;
+}
+
+/* Status indicators */
+.status-approved {
+  background-color: #166534;
+  color: white;
+}
+
+.status-refer {
+  background-color: #CA8A04;
+  color: white;
+}
+
+.status-declined {
+  background-color: var(--color-accent);
+  color: white;
+}
