@@ -48,6 +48,19 @@ export function useStore(): Store {
   const [baseline] = useState<Scenario | null>(mockBaselineScenario);
   const [activeTab, setActiveTab] = useState<'loan' | 'income' | 'expenses' | 'liabilities'>('loan');
 
+  // Simulate API recalculation (in reality this would call the API)
+  const simulateRecalculation = useCallback(() => {
+    // This is mock - in reality we'd call the serviceability API
+    setResult((prev) => {
+      if (!prev) return prev;
+      // Simulate small random changes to show the UI updating
+      return {
+        ...prev,
+        netSurplusOrDeficit: prev.netSurplusOrDeficit + Math.floor(Math.random() * 200 - 100),
+      };
+    });
+  }, []);
+
   const addChangeLogEntry = useCallback((entry: Omit<ChangeLogEntry, 'id' | 'timestamp'>) => {
     const newEntry: ChangeLogEntry = {
       ...entry,
@@ -95,7 +108,7 @@ export function useStore(): Store {
 
     // Simulate recalculation
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const updateEmployment = useCallback((
     applicantId: string,
@@ -137,7 +150,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const addRentalIncome = useCallback((
     applicantId: string,
@@ -176,7 +189,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const updateRentalIncome = useCallback((
     applicantId: string,
@@ -217,7 +230,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const removeRentalIncome = useCallback((
     applicantId: string,
@@ -252,7 +265,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const updateExpense = useCallback((
     applicantId: string,
@@ -290,7 +303,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const updateDebt = useCallback((debtId: string, updates: Partial<OtherDebt>) => {
     setApplication((prev) => {
@@ -319,7 +332,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const updateMortgage = useCallback((mortgageId: string, updates: Partial<OtherMortgage>) => {
     setApplication((prev) => {
@@ -347,7 +360,7 @@ export function useStore(): Store {
     });
 
     simulateRecalculation();
-  }, [addChangeLogEntry]);
+  }, [addChangeLogEntry, simulateRecalculation]);
 
   const resetToBaseline = useCallback(() => {
     if (baseline) {
@@ -363,19 +376,6 @@ export function useStore(): Store {
       });
     }
   }, [baseline, addChangeLogEntry]);
-
-  // Simulate API recalculation (in reality this would call the API)
-  const simulateRecalculation = () => {
-    // This is mock - in reality we'd call the serviceability API
-    setResult((prev) => {
-      if (!prev) return prev;
-      // Simulate small random changes to show the UI updating
-      return {
-        ...prev,
-        netSurplusOrDeficit: prev.netSurplusOrDeficit + Math.floor(Math.random() * 200 - 100),
-      };
-    });
-  };
 
   return {
     application,
