@@ -19,6 +19,9 @@ function App() {
     activeTab,
     updateLoan,
     updateEmployment,
+    addRentalIncome,
+    updateRentalIncome,
+    removeRentalIncome,
     updateExpense,
     updateDebt,
     updateMortgage,
@@ -56,6 +59,9 @@ function App() {
               <IncomeSection
                 applicants={application.applicants}
                 onUpdateEmployment={updateEmployment}
+                onAddRentalIncome={addRentalIncome}
+                onUpdateRentalIncome={updateRentalIncome}
+                onRemoveRentalIncome={removeRentalIncome}
               />
             )}
 

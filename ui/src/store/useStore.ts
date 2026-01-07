@@ -9,6 +9,7 @@ import type {
   Expense,
   OtherDebt,
   OtherMortgage,
+  RentalIncome,
 } from '../types';
 import {
   mockApplication,
@@ -29,6 +30,9 @@ interface Store {
   // Actions
   updateLoan: (updates: Partial<LoanDetails>) => void;
   updateEmployment: (applicantId: string, employmentId: string, updates: Partial<Employment>) => void;
+  addRentalIncome: (applicantId: string, rental: Omit<RentalIncome, 'incomeId'>) => void;
+  updateRentalIncome: (applicantId: string, incomeId: string, updates: Partial<RentalIncome>) => void;
+  removeRentalIncome: (applicantId: string, incomeId: string) => void;
   updateExpense: (applicantId: string, expenseId: string, updates: Partial<Expense>) => void;
   updateDebt: (debtId: string, updates: Partial<OtherDebt>) => void;
   updateMortgage: (mortgageId: string, updates: Partial<OtherMortgage>) => void;
@@ -126,6 +130,121 @@ export function useStore(): Store {
         return {
           ...app,
           incomes: { ...app.incomes, employments: newEmployments },
+        };
+      });
+
+      return { ...prev, applicants: newApplicants };
+    });
+
+    simulateRecalculation();
+  }, [addChangeLogEntry]);
+
+  const addRentalIncome = useCallback((
+    applicantId: string,
+    rental: Omit<RentalIncome, 'incomeId'>
+  ) => {
+    const newIncomeId = `rental-${Date.now()}`;
+
+    setApplication((prev) => {
+      const newApplicants = prev.applicants.map((app) => {
+        if (app.partyId !== applicantId) return app;
+
+        const newRental: RentalIncome = {
+          ...rental,
+          incomeId: newIncomeId,
+        };
+
+        addChangeLogEntry({
+          field: `applicants.${applicantId}.rentals.${newIncomeId}`,
+          category: 'income',
+          description: `Added rental income for ${app.name}`,
+          previousValue: null,
+          newValue: formatCurrency(rental.proportionalAmount),
+          impactOnSurplus: Math.round(rental.proportionalAmount * 0.8 * 0.6), // Rough estimate: 80% shading, 60% net
+        });
+
+        return {
+          ...app,
+          incomes: {
+            ...app.incomes,
+            rentals: [...app.incomes.rentals, newRental],
+          },
+        };
+      });
+
+      return { ...prev, applicants: newApplicants };
+    });
+
+    simulateRecalculation();
+  }, [addChangeLogEntry]);
+
+  const updateRentalIncome = useCallback((
+    applicantId: string,
+    incomeId: string,
+    updates: Partial<RentalIncome>
+  ) => {
+    setApplication((prev) => {
+      const newApplicants = prev.applicants.map((app) => {
+        if (app.partyId !== applicantId) return app;
+
+        const newRentals = app.incomes.rentals.map((rental) => {
+          if (rental.incomeId !== incomeId) return rental;
+
+          Object.keys(updates).forEach((key) => {
+            const oldVal = rental[key as keyof RentalIncome];
+            const newVal = updates[key as keyof RentalIncome];
+            if (oldVal !== newVal && key !== 'incomeId') {
+              addChangeLogEntry({
+                field: `applicants.${applicantId}.rentals.${incomeId}.${key}`,
+                category: 'income',
+                description: `${app.name}'s rental ${key === 'proportionalAmount' ? 'amount' : key.replace(/([A-Z])/g, ' $1').toLowerCase()} updated`,
+                previousValue: typeof oldVal === 'number' ? formatCurrency(oldVal) : (oldVal ?? null),
+                newValue: typeof newVal === 'number' ? formatCurrency(newVal) : (newVal ?? null),
+              });
+            }
+          });
+
+          return { ...rental, ...updates };
+        });
+
+        return {
+          ...app,
+          incomes: { ...app.incomes, rentals: newRentals },
+        };
+      });
+
+      return { ...prev, applicants: newApplicants };
+    });
+
+    simulateRecalculation();
+  }, [addChangeLogEntry]);
+
+  const removeRentalIncome = useCallback((
+    applicantId: string,
+    incomeId: string
+  ) => {
+    setApplication((prev) => {
+      const newApplicants = prev.applicants.map((app) => {
+        if (app.partyId !== applicantId) return app;
+
+        const rentalToRemove = app.incomes.rentals.find((r) => r.incomeId === incomeId);
+        if (rentalToRemove) {
+          addChangeLogEntry({
+            field: `applicants.${applicantId}.rentals.${incomeId}`,
+            category: 'income',
+            description: `Removed rental income for ${app.name}`,
+            previousValue: formatCurrency(rentalToRemove.proportionalAmount),
+            newValue: null,
+            impactOnSurplus: -Math.round(rentalToRemove.proportionalAmount * 0.8 * 0.6),
+          });
+        }
+
+        return {
+          ...app,
+          incomes: {
+            ...app.incomes,
+            rentals: app.incomes.rentals.filter((r) => r.incomeId !== incomeId),
+          },
         };
       });
 
@@ -266,6 +385,9 @@ export function useStore(): Store {
     activeTab,
     updateLoan,
     updateEmployment,
+    addRentalIncome,
+    updateRentalIncome,
+    removeRentalIncome,
     updateExpense,
     updateDebt,
     updateMortgage,
