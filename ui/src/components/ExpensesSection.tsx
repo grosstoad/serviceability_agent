@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import type { Applicant, Expense, CalculationResult } from '../types';
-import { formatCurrency, formatFrequency, formatExpenseType, toAnnual } from '../data/mockData';
+import { useState, useCallback } from 'react';
+import type { Applicant, Expense, CalculationResult, Frequency } from '../types';
+import { formatCurrency, formatExpenseType, toAnnual } from '../data/mockData';
+import { AmountFrequencyEditor } from './AmountFrequencyEditor';
 
 interface ExpensesSectionProps {
   applicants: Applicant[];
@@ -11,32 +12,39 @@ interface ExpensesSectionProps {
 // Fixed vs Living expenses categorization
 const FIXED_EXPENSES = ['CHILD_SUPPORT', 'RENT_OR_BOARD'];
 
+// Type for expense editing state
+interface ExpenseEditState {
+  fieldKey: string;
+  tempAmount: string;
+  tempFrequency: Frequency;
+}
+
 export function ExpensesSection({ applicants, result, onUpdateExpense }: ExpensesSectionProps) {
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [tempValue, setTempValue] = useState<string>('');
+  const [editingField, setEditingField] = useState<ExpenseEditState | null>(null);
 
-  const handleEdit = (fieldKey: string, currentValue: number) => {
-    setEditingField(fieldKey);
-    setTempValue(currentValue.toString());
-  };
+  const handleEdit = useCallback((fieldKey: string, currentAmount: number, currentFrequency: Frequency) => {
+    setEditingField({
+      fieldKey,
+      tempAmount: currentAmount.toString(),
+      tempFrequency: currentFrequency,
+    });
+  }, []);
 
-  const handleSave = (applicantId: string, expenseId: string) => {
-    const numValue = parseFloat(tempValue);
+  const handleSave = useCallback((applicantId: string, expenseId: string) => {
+    if (!editingField) return;
+    const numValue = parseFloat(editingField.tempAmount);
     if (!isNaN(numValue)) {
-      onUpdateExpense(applicantId, expenseId, { amount: numValue });
+      onUpdateExpense(applicantId, expenseId, {
+        amount: numValue,
+        amountFrequency: editingField.tempFrequency,
+      });
     }
     setEditingField(null);
-    setTempValue('');
-  };
+  }, [editingField, onUpdateExpense]);
 
-  const handleKeyDown = (e: React.KeyboardEvent, applicantId: string, expenseId: string) => {
-    if (e.key === 'Enter') {
-      handleSave(applicantId, expenseId);
-    } else if (e.key === 'Escape') {
-      setEditingField(null);
-      setTempValue('');
-    }
-  };
+  const handleCancel = useCallback(() => {
+    setEditingField(null);
+  }, []);
 
   // Calculate totals
   const allExpenses = applicants.flatMap((app) =>
@@ -137,35 +145,26 @@ export function ExpensesSection({ applicants, result, onUpdateExpense }: Expense
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {fixedExpenses.map((exp) => (
-                <div
-                  key={exp.id}
-                  className="border border-[#111111] p-4 flex items-center justify-between hover:bg-neutral-50 cursor-pointer"
-                  onClick={() => handleEdit(`${exp.applicantId}-${exp.id}`, exp.amount)}
-                >
-                  <div>
+                <div key={exp.id} className="border border-[#111111]">
+                  <div className="px-4 py-2 bg-neutral-50 border-b border-[#111111]">
                     <div className="font-sans text-sm font-medium">{formatExpenseType(exp.type)}</div>
-                    <div className="font-mono text-xs text-neutral-500 mt-1">{exp.applicantName}</div>
+                    <div className="font-mono text-xs text-neutral-500">{exp.applicantName}</div>
                   </div>
-                  <div className="text-right">
-                    {editingField === `${exp.applicantId}-${exp.id}` ? (
-                      <input
-                        type="number"
-                        value={tempValue}
-                        onChange={(e) => setTempValue(e.target.value)}
-                        onBlur={() => handleSave(exp.applicantId, exp.id)}
-                        onKeyDown={(e) => handleKeyDown(e, exp.applicantId, exp.id)}
-                        className="w-32 font-mono text-xl font-bold text-right"
-                        autoFocus
-                      />
-                    ) : (
-                      <div className="font-mono text-xl font-bold">
-                        {formatCurrency(exp.amount)}
-                        <span className="text-xs text-neutral-500 ml-1">
-                          {formatFrequency(exp.amountFrequency)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  <AmountFrequencyEditor
+                    label=""
+                    amount={exp.amount}
+                    frequency={exp.amountFrequency}
+                    isEditing={editingField?.fieldKey === `${exp.applicantId}-${exp.id}`}
+                    tempAmount={editingField?.tempAmount ?? ''}
+                    tempFrequency={editingField?.tempFrequency ?? 'MONTHLY'}
+                    onEdit={() => handleEdit(`${exp.applicantId}-${exp.id}`, exp.amount, exp.amountFrequency)}
+                    onAmountChange={(value) => setEditingField(prev => prev ? { ...prev, tempAmount: value } : null)}
+                    onFrequencyChange={(freq) => setEditingField(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                    onSave={() => handleSave(exp.applicantId, exp.id)}
+                    onCancel={handleCancel}
+                    showAnnual
+                    compact
+                  />
                 </div>
               ))}
             </div>
@@ -198,33 +197,42 @@ export function ExpensesSection({ applicants, result, onUpdateExpense }: Expense
                   {/* Individual expenses */}
                   <div className="divide-y divide-neutral-200">
                     {expenses.map((exp) => (
-                      <div
-                        key={exp.id}
-                        className="px-4 py-3 flex items-center justify-between hover:bg-neutral-50 cursor-pointer"
-                        onClick={() => handleEdit(`${exp.applicantId}-${exp.id}`, exp.amount)}
-                      >
-                        <div>
-                          <div className="font-mono text-xs text-neutral-500">{exp.applicantName}</div>
-                          {exp.description && (
-                            <div className="font-body text-xs text-neutral-600 mt-0.5">{exp.description}</div>
-                          )}
-                        </div>
-                        {editingField === `${exp.applicantId}-${exp.id}` ? (
-                          <input
-                            type="number"
-                            value={tempValue}
-                            onChange={(e) => setTempValue(e.target.value)}
-                            onBlur={() => handleSave(exp.applicantId, exp.id)}
-                            onKeyDown={(e) => handleKeyDown(e, exp.applicantId, exp.id)}
-                            className="w-24 font-mono text-base font-bold text-right"
-                            autoFocus
-                          />
+                      <div key={exp.id} className="relative">
+                        {editingField?.fieldKey === `${exp.applicantId}-${exp.id}` ? (
+                          <div className="p-2 bg-neutral-50">
+                            <div className="font-mono text-xs text-neutral-500 mb-1">{exp.applicantName}</div>
+                            <AmountFrequencyEditor
+                              label=""
+                              amount={exp.amount}
+                              frequency={exp.amountFrequency}
+                              isEditing={true}
+                              tempAmount={editingField.tempAmount}
+                              tempFrequency={editingField.tempFrequency}
+                              onEdit={() => {}}
+                              onAmountChange={(value) => setEditingField(prev => prev ? { ...prev, tempAmount: value } : null)}
+                              onFrequencyChange={(freq) => setEditingField(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                              onSave={() => handleSave(exp.applicantId, exp.id)}
+                              onCancel={handleCancel}
+                              compact
+                            />
+                          </div>
                         ) : (
-                          <div className="font-mono text-base font-bold">
-                            {formatCurrency(exp.amount)}
-                            <span className="text-xs text-neutral-500 ml-1">
-                              {formatFrequency(exp.amountFrequency)}
-                            </span>
+                          <div
+                            className="px-4 py-3 flex items-center justify-between hover:bg-neutral-50 cursor-pointer"
+                            onClick={() => handleEdit(`${exp.applicantId}-${exp.id}`, exp.amount, exp.amountFrequency)}
+                          >
+                            <div>
+                              <div className="font-mono text-xs text-neutral-500">{exp.applicantName}</div>
+                              {exp.description && (
+                                <div className="font-body text-xs text-neutral-600 mt-0.5">{exp.description}</div>
+                              )}
+                            </div>
+                            <div className="font-mono text-base font-bold">
+                              {formatCurrency(exp.amount)}
+                              <span className="text-xs text-neutral-500 ml-1">
+                                {exp.amountFrequency === 'MONTHLY' ? 'p.m.' : exp.amountFrequency === 'WEEKLY' ? 'p.w.' : exp.amountFrequency === 'FORTNIGHTLY' ? 'p.f.' : 'p.a.'}
+                              </span>
+                            </div>
                           </div>
                         )}
                       </div>

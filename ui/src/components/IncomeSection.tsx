@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { Applicant, Employment, RentalIncome, Frequency, RentalOwnership } from '../types';
 import {
   formatCurrency,
@@ -7,6 +7,7 @@ import {
   formatOtherIncomeType,
   toAnnual,
 } from '../data/mockData';
+import { AmountFrequencyEditor } from './AmountFrequencyEditor';
 
 interface IncomeSectionProps {
   applicants: Applicant[];
@@ -42,6 +43,13 @@ const createDefaultRentalForm = (applicants: Applicant[], primaryApplicantId: st
   })),
 });
 
+// Type for income field editing state
+interface IncomeEditState {
+  fieldKey: string;
+  tempAmount: string;
+  tempFrequency: Frequency;
+}
+
 export function IncomeSection({
   applicants,
   onUpdateEmployment,
@@ -49,41 +57,47 @@ export function IncomeSection({
   onUpdateRentalIncome,
   onRemoveRentalIncome,
 }: IncomeSectionProps) {
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [tempValue, setTempValue] = useState<string>('');
+  const [editingField, setEditingField] = useState<IncomeEditState | null>(null);
   const [showAddRentalForm, setShowAddRentalForm] = useState<string | null>(null); // applicantId or null
   const [rentalForm, setRentalForm] = useState<RentalFormData>(() =>
     createDefaultRentalForm(applicants, applicants[0]?.partyId ?? '')
   );
   const [editingRental, setEditingRental] = useState<string | null>(null); // rental incomeId being edited
 
-  const handleEdit = (fieldKey: string, currentValue: number) => {
-    setEditingField(fieldKey);
-    setTempValue(currentValue.toString());
-  };
+  // Handle editing employment income fields with amount + frequency
+  const handleEditEmploymentField = useCallback((
+    fieldKey: string,
+    currentAmount: number,
+    currentFrequency: Frequency
+  ) => {
+    setEditingField({
+      fieldKey,
+      tempAmount: currentAmount.toString(),
+      tempFrequency: currentFrequency,
+    });
+  }, []);
 
-  const handleSave = (applicantId: string, employmentId: string, field: keyof Employment) => {
-    const numValue = parseFloat(tempValue);
-    if (!isNaN(numValue)) {
-      onUpdateEmployment(applicantId, employmentId, { [field]: numValue });
-    }
-    setEditingField(null);
-    setTempValue('');
-  };
-
-  const handleKeyDown = (
-    e: React.KeyboardEvent,
+  const handleSaveEmploymentField = useCallback((
     applicantId: string,
     employmentId: string,
-    field: keyof Employment
+    amountField: keyof Employment,
+    frequencyField: keyof Employment
   ) => {
-    if (e.key === 'Enter') {
-      handleSave(applicantId, employmentId, field);
-    } else if (e.key === 'Escape') {
-      setEditingField(null);
-      setTempValue('');
+    if (!editingField) return;
+
+    const numValue = parseFloat(editingField.tempAmount);
+    if (!isNaN(numValue)) {
+      onUpdateEmployment(applicantId, employmentId, {
+        [amountField]: numValue,
+        [frequencyField]: editingField.tempFrequency,
+      });
     }
-  };
+    setEditingField(null);
+  }, [editingField, onUpdateEmployment]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingField(null);
+  }, []);
 
   // Rental form handlers
   const handleAddRentalClick = (applicantId: string) => {
@@ -285,143 +299,91 @@ export function IncomeSection({
                       {/* Income breakdown grid */}
                       <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-[#111111]">
                         {/* Salary */}
-                        <div
-                          className="p-4 hover:bg-neutral-50 cursor-pointer"
-                          onClick={() => handleEdit(`${applicant.partyId}-${emp.id}-salary`, emp.salary)}
-                        >
-                          <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
-                            Base Salary
-                          </div>
-                          {editingField === `${applicant.partyId}-${emp.id}-salary` ? (
-                            <input
-                              type="number"
-                              value={tempValue}
-                              onChange={(e) => setTempValue(e.target.value)}
-                              onBlur={() => handleSave(applicant.partyId, emp.id, 'salary')}
-                              onKeyDown={(e) => handleKeyDown(e, applicant.partyId, emp.id, 'salary')}
-                              className="w-full font-mono text-xl font-bold"
-                              autoFocus
-                            />
-                          ) : (
-                            <div className="font-mono text-xl font-bold">
-                              {formatCurrency(emp.salary)}
-                              <span className="text-xs text-neutral-500 ml-1">
-                                {formatFrequency(emp.salaryFrequency)}
-                              </span>
-                            </div>
+                        <AmountFrequencyEditor
+                          label="Base Salary"
+                          amount={emp.salary}
+                          frequency={emp.salaryFrequency}
+                          isEditing={editingField?.fieldKey === `${applicant.partyId}-${emp.id}-salary`}
+                          tempAmount={editingField?.tempAmount ?? ''}
+                          tempFrequency={editingField?.tempFrequency ?? 'YEARLY'}
+                          onEdit={() => handleEditEmploymentField(
+                            `${applicant.partyId}-${emp.id}-salary`,
+                            emp.salary,
+                            emp.salaryFrequency
                           )}
-                        </div>
+                          onAmountChange={(value) => setEditingField(prev => prev ? { ...prev, tempAmount: value } : null)}
+                          onFrequencyChange={(freq) => setEditingField(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                          onSave={() => handleSaveEmploymentField(applicant.partyId, emp.id, 'salary', 'salaryFrequency')}
+                          onCancel={handleCancelEdit}
+                          showAnnual
+                          compact
+                        />
 
                         {/* Bonus */}
-                        <div
-                          className="p-4 hover:bg-neutral-50 cursor-pointer"
-                          onClick={() => handleEdit(`${applicant.partyId}-${emp.id}-bonus`, emp.bonus ?? 0)}
-                        >
-                          <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
-                            Bonus
-                          </div>
-                          {editingField === `${applicant.partyId}-${emp.id}-bonus` ? (
-                            <input
-                              type="number"
-                              value={tempValue}
-                              onChange={(e) => setTempValue(e.target.value)}
-                              onBlur={() => handleSave(applicant.partyId, emp.id, 'bonus')}
-                              onKeyDown={(e) => handleKeyDown(e, applicant.partyId, emp.id, 'bonus')}
-                              className="w-full font-mono text-xl font-bold"
-                              autoFocus
-                            />
-                          ) : (
-                            <div className="font-mono text-xl font-bold">
-                              {emp.bonus ? (
-                                <>
-                                  {formatCurrency(emp.bonus)}
-                                  <span className="text-xs text-neutral-500 ml-1">
-                                    {formatFrequency(emp.bonusFrequency || 'YEARLY')}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-neutral-400">—</span>
-                              )}
-                            </div>
+                        <AmountFrequencyEditor
+                          label="Bonus"
+                          amount={emp.bonus}
+                          frequency={emp.bonusFrequency}
+                          defaultFrequency="YEARLY"
+                          isEditing={editingField?.fieldKey === `${applicant.partyId}-${emp.id}-bonus`}
+                          tempAmount={editingField?.tempAmount ?? ''}
+                          tempFrequency={editingField?.tempFrequency ?? 'YEARLY'}
+                          onEdit={() => handleEditEmploymentField(
+                            `${applicant.partyId}-${emp.id}-bonus`,
+                            emp.bonus ?? 0,
+                            emp.bonusFrequency ?? 'YEARLY'
                           )}
-                        </div>
+                          onAmountChange={(value) => setEditingField(prev => prev ? { ...prev, tempAmount: value } : null)}
+                          onFrequencyChange={(freq) => setEditingField(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                          onSave={() => handleSaveEmploymentField(applicant.partyId, emp.id, 'bonus', 'bonusFrequency')}
+                          onCancel={handleCancelEdit}
+                          showAnnual
+                          compact
+                        />
 
                         {/* Commission */}
-                        <div
-                          className="p-4 hover:bg-neutral-50 cursor-pointer"
-                          onClick={() => handleEdit(`${applicant.partyId}-${emp.id}-commission`, emp.commission ?? 0)}
-                        >
-                          <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
-                            Commission
-                          </div>
-                          {editingField === `${applicant.partyId}-${emp.id}-commission` ? (
-                            <input
-                              type="number"
-                              value={tempValue}
-                              onChange={(e) => setTempValue(e.target.value)}
-                              onBlur={() => handleSave(applicant.partyId, emp.id, 'commission')}
-                              onKeyDown={(e) => handleKeyDown(e, applicant.partyId, emp.id, 'commission')}
-                              className="w-full font-mono text-xl font-bold"
-                              autoFocus
-                            />
-                          ) : (
-                            <div className="font-mono text-xl font-bold">
-                              {emp.commission ? (
-                                <>
-                                  {formatCurrency(emp.commission)}
-                                  <span className="text-xs text-neutral-500 ml-1">
-                                    {formatFrequency(emp.commissionFrequency || 'YEARLY')}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-neutral-400">—</span>
-                              )}
-                            </div>
+                        <AmountFrequencyEditor
+                          label="Commission"
+                          amount={emp.commission}
+                          frequency={emp.commissionFrequency}
+                          defaultFrequency="YEARLY"
+                          isEditing={editingField?.fieldKey === `${applicant.partyId}-${emp.id}-commission`}
+                          tempAmount={editingField?.tempAmount ?? ''}
+                          tempFrequency={editingField?.tempFrequency ?? 'YEARLY'}
+                          onEdit={() => handleEditEmploymentField(
+                            `${applicant.partyId}-${emp.id}-commission`,
+                            emp.commission ?? 0,
+                            emp.commissionFrequency ?? 'YEARLY'
                           )}
-                        </div>
+                          onAmountChange={(value) => setEditingField(prev => prev ? { ...prev, tempAmount: value } : null)}
+                          onFrequencyChange={(freq) => setEditingField(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                          onSave={() => handleSaveEmploymentField(applicant.partyId, emp.id, 'commission', 'commissionFrequency')}
+                          onCancel={handleCancelEdit}
+                          showAnnual
+                          compact
+                        />
 
                         {/* Overtime */}
-                        <div
-                          className="p-4 hover:bg-neutral-50 cursor-pointer"
-                          onClick={() =>
-                            handleEdit(
-                              `${applicant.partyId}-${emp.id}-overtime`,
-                              emp.regularOvertimeAndShiftAllowance ?? 0
-                            )
-                          }
-                        >
-                          <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
-                            Overtime/Allowances
-                          </div>
-                          {editingField === `${applicant.partyId}-${emp.id}-overtime` ? (
-                            <input
-                              type="number"
-                              value={tempValue}
-                              onChange={(e) => setTempValue(e.target.value)}
-                              onBlur={() =>
-                                handleSave(applicant.partyId, emp.id, 'regularOvertimeAndShiftAllowance')
-                              }
-                              onKeyDown={(e) =>
-                                handleKeyDown(e, applicant.partyId, emp.id, 'regularOvertimeAndShiftAllowance')
-                              }
-                              className="w-full font-mono text-xl font-bold"
-                              autoFocus
-                            />
-                          ) : (
-                            <div className="font-mono text-xl font-bold">
-                              {emp.regularOvertimeAndShiftAllowance ? (
-                                <>
-                                  {formatCurrency(emp.regularOvertimeAndShiftAllowance)}
-                                  <span className="text-xs text-neutral-500 ml-1">
-                                    {formatFrequency(emp.regularOvertimeAndShiftAllowanceFrequency || 'YEARLY')}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-neutral-400">—</span>
-                              )}
-                            </div>
+                        <AmountFrequencyEditor
+                          label="Overtime/Allowances"
+                          amount={emp.regularOvertimeAndShiftAllowance}
+                          frequency={emp.regularOvertimeAndShiftAllowanceFrequency}
+                          defaultFrequency="YEARLY"
+                          isEditing={editingField?.fieldKey === `${applicant.partyId}-${emp.id}-overtime`}
+                          tempAmount={editingField?.tempAmount ?? ''}
+                          tempFrequency={editingField?.tempFrequency ?? 'YEARLY'}
+                          onEdit={() => handleEditEmploymentField(
+                            `${applicant.partyId}-${emp.id}-overtime`,
+                            emp.regularOvertimeAndShiftAllowance ?? 0,
+                            emp.regularOvertimeAndShiftAllowanceFrequency ?? 'YEARLY'
                           )}
-                        </div>
+                          onAmountChange={(value) => setEditingField(prev => prev ? { ...prev, tempAmount: value } : null)}
+                          onFrequencyChange={(freq) => setEditingField(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                          onSave={() => handleSaveEmploymentField(applicant.partyId, emp.id, 'regularOvertimeAndShiftAllowance', 'regularOvertimeAndShiftAllowanceFrequency')}
+                          onCancel={handleCancelEdit}
+                          showAnnual
+                          compact
+                        />
                       </div>
                     </div>
                   ))}

@@ -1,12 +1,20 @@
-import { useState } from 'react';
-import type { OtherDebt, OtherMortgage } from '../types';
+import { useState, useCallback } from 'react';
+import type { OtherDebt, OtherMortgage, Frequency } from '../types';
 import { formatCurrency, formatFrequency, formatDebtType } from '../data/mockData';
+import { AmountFrequencyEditor } from './AmountFrequencyEditor';
 
 interface LiabilitiesSectionProps {
   otherDebts: OtherDebt[];
   otherMortgages: OtherMortgage[];
   onUpdateDebt: (debtId: string, updates: Partial<OtherDebt>) => void;
   onUpdateMortgage: (mortgageId: string, updates: Partial<OtherMortgage>) => void;
+}
+
+// Type for liability editing state
+interface LiabilityEditState {
+  fieldKey: string;
+  tempAmount: string;
+  tempFrequency: Frequency;
 }
 
 export function LiabilitiesSection({
@@ -17,6 +25,7 @@ export function LiabilitiesSection({
 }: LiabilitiesSectionProps) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
+  const [editingRepayment, setEditingRepayment] = useState<LiabilityEditState | null>(null);
 
   const handleEdit = (fieldKey: string, currentValue: number) => {
     setEditingField(fieldKey);
@@ -58,6 +67,43 @@ export function LiabilitiesSection({
       setTempValue('');
     }
   };
+
+  // Repayment editing with frequency
+  const handleEditRepayment = useCallback((fieldKey: string, amount: number, frequency: Frequency) => {
+    setEditingRepayment({
+      fieldKey,
+      tempAmount: amount.toString(),
+      tempFrequency: frequency,
+    });
+  }, []);
+
+  const handleSaveMortgageRepayment = useCallback((mortgageId: string) => {
+    if (!editingRepayment) return;
+    const numValue = parseFloat(editingRepayment.tempAmount);
+    if (!isNaN(numValue)) {
+      onUpdateMortgage(mortgageId, {
+        customerDeclaredRepaymentAmount: numValue,
+        repaymentFrequency: editingRepayment.tempFrequency,
+      });
+    }
+    setEditingRepayment(null);
+  }, [editingRepayment, onUpdateMortgage]);
+
+  const handleSaveDebtRepayment = useCallback((debtId: string) => {
+    if (!editingRepayment) return;
+    const numValue = parseFloat(editingRepayment.tempAmount);
+    if (!isNaN(numValue)) {
+      onUpdateDebt(debtId, {
+        customerDeclaredRepaymentAmount: numValue,
+        repaymentFrequency: editingRepayment.tempFrequency,
+      });
+    }
+    setEditingRepayment(null);
+  }, [editingRepayment, onUpdateDebt]);
+
+  const handleCancelRepayment = useCallback(() => {
+    setEditingRepayment(null);
+  }, []);
 
   // Calculate totals
   const totalDebtLimit = otherDebts
@@ -225,36 +271,24 @@ export function LiabilitiesSection({
                       )}
                     </div>
 
-                    <div
-                      className="p-4 hover:bg-neutral-50 cursor-pointer"
-                      onClick={() =>
-                        handleEdit(`mort-${mortgage.id}-repayment`, mortgage.customerDeclaredRepaymentAmount)
-                      }
-                    >
-                      <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
-                        Repayment
-                      </div>
-                      {editingField === `mort-${mortgage.id}-repayment` ? (
-                        <input
-                          type="number"
-                          value={tempValue}
-                          onChange={(e) => setTempValue(e.target.value)}
-                          onBlur={() => handleSaveMortgage(mortgage.id, 'customerDeclaredRepaymentAmount')}
-                          onKeyDown={(e) =>
-                            handleKeyDownMortgage(e, mortgage.id, 'customerDeclaredRepaymentAmount')
-                          }
-                          className="w-full font-mono text-lg font-bold"
-                          autoFocus
-                        />
-                      ) : (
-                        <div className="font-mono text-lg font-bold">
-                          {formatCurrency(mortgage.customerDeclaredRepaymentAmount)}
-                          <span className="text-xs text-neutral-500 ml-1">
-                            {formatFrequency(mortgage.repaymentFrequency)}
-                          </span>
-                        </div>
+                    <AmountFrequencyEditor
+                      label="Repayment"
+                      amount={mortgage.customerDeclaredRepaymentAmount}
+                      frequency={mortgage.repaymentFrequency}
+                      isEditing={editingRepayment?.fieldKey === `mort-${mortgage.id}-repayment`}
+                      tempAmount={editingRepayment?.tempAmount ?? ''}
+                      tempFrequency={editingRepayment?.tempFrequency ?? 'MONTHLY'}
+                      onEdit={() => handleEditRepayment(
+                        `mort-${mortgage.id}-repayment`,
+                        mortgage.customerDeclaredRepaymentAmount,
+                        mortgage.repaymentFrequency
                       )}
-                    </div>
+                      onAmountChange={(value) => setEditingRepayment(prev => prev ? { ...prev, tempAmount: value } : null)}
+                      onFrequencyChange={(freq) => setEditingRepayment(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                      onSave={() => handleSaveMortgageRepayment(mortgage.id)}
+                      onCancel={handleCancelRepayment}
+                      compact
+                    />
 
                     <div className="p-4">
                       <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
@@ -368,17 +402,46 @@ export function LiabilitiesSection({
                     </div>
 
                     {/* Repayment */}
-                    <div className="col-span-2 p-4">
-                      <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
-                        Repayment
-                      </div>
-                      <div className="font-mono text-lg font-bold">
-                        {debt.customerDeclaredRepaymentAmount
-                          ? `${formatCurrency(debt.customerDeclaredRepaymentAmount)} ${formatFrequency(
-                              debt.repaymentFrequency || 'MONTHLY'
-                            )}`
-                          : '3% of limit'}
-                      </div>
+                    <div className="col-span-2">
+                      {editingRepayment?.fieldKey === `debt-${debt.id}-repayment` ? (
+                        <div className="p-2">
+                          <AmountFrequencyEditor
+                            label="Repayment"
+                            amount={debt.customerDeclaredRepaymentAmount}
+                            frequency={debt.repaymentFrequency}
+                            defaultFrequency="MONTHLY"
+                            isEditing={true}
+                            tempAmount={editingRepayment.tempAmount}
+                            tempFrequency={editingRepayment.tempFrequency}
+                            onEdit={() => {}}
+                            onAmountChange={(value) => setEditingRepayment(prev => prev ? { ...prev, tempAmount: value } : null)}
+                            onFrequencyChange={(freq) => setEditingRepayment(prev => prev ? { ...prev, tempFrequency: freq } : null)}
+                            onSave={() => handleSaveDebtRepayment(debt.id)}
+                            onCancel={handleCancelRepayment}
+                            compact
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className="p-4 hover:bg-neutral-50 cursor-pointer"
+                          onClick={() => handleEditRepayment(
+                            `debt-${debt.id}-repayment`,
+                            debt.customerDeclaredRepaymentAmount ?? 0,
+                            debt.repaymentFrequency ?? 'MONTHLY'
+                          )}
+                        >
+                          <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-1">
+                            Repayment
+                          </div>
+                          <div className="font-mono text-lg font-bold">
+                            {debt.customerDeclaredRepaymentAmount
+                              ? `${formatCurrency(debt.customerDeclaredRepaymentAmount)} ${formatFrequency(
+                                  debt.repaymentFrequency || 'MONTHLY'
+                                )}`
+                              : '3% of limit'}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Payout action */}
