@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Applicant, Employment, RentalIncome, Frequency } from '../types';
+import type { Applicant, Employment, RentalIncome, Frequency, RentalOwnership } from '../types';
 import {
   formatCurrency,
   formatFrequency,
@@ -16,19 +16,31 @@ interface IncomeSectionProps {
   onRemoveRentalIncome: (applicantId: string, incomeId: string) => void;
 }
 
+interface OwnershipFormEntry {
+  partyId: string;
+  selected: boolean;
+  proportion: number;
+}
+
 interface RentalFormData {
   propertyAddress: string;
   propertyPostcode: string;
   proportionalAmount: string;
   proportionalAmountFrequency: Frequency;
+  ownerships: OwnershipFormEntry[];
 }
 
-const defaultRentalForm: RentalFormData = {
+const createDefaultRentalForm = (applicants: Applicant[], primaryApplicantId: string): RentalFormData => ({
   propertyAddress: '',
   propertyPostcode: '',
   proportionalAmount: '',
   proportionalAmountFrequency: 'MONTHLY',
-};
+  ownerships: applicants.map(app => ({
+    partyId: app.partyId,
+    selected: app.partyId === primaryApplicantId,
+    proportion: app.partyId === primaryApplicantId ? 100 : 0,
+  })),
+});
 
 export function IncomeSection({
   applicants,
@@ -40,7 +52,9 @@ export function IncomeSection({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
   const [showAddRentalForm, setShowAddRentalForm] = useState<string | null>(null); // applicantId or null
-  const [rentalForm, setRentalForm] = useState<RentalFormData>(defaultRentalForm);
+  const [rentalForm, setRentalForm] = useState<RentalFormData>(() =>
+    createDefaultRentalForm(applicants, applicants[0]?.partyId ?? '')
+  );
   const [editingRental, setEditingRental] = useState<string | null>(null); // rental incomeId being edited
 
   const handleEdit = (fieldKey: string, currentValue: number) => {
@@ -74,7 +88,7 @@ export function IncomeSection({
   // Rental form handlers
   const handleAddRentalClick = (applicantId: string) => {
     setShowAddRentalForm(applicantId);
-    setRentalForm(defaultRentalForm);
+    setRentalForm(createDefaultRentalForm(applicants, applicantId));
     setEditingRental(null);
   };
 
@@ -86,7 +100,59 @@ export function IncomeSection({
       propertyPostcode: rental.propertyPostcode || '',
       proportionalAmount: rental.proportionalAmount.toString(),
       proportionalAmountFrequency: rental.proportionalAmountFrequency,
+      ownerships: applicants.map(app => {
+        const existingOwnership = rental.ownerships?.find(o => o.partyId === app.partyId);
+        if (existingOwnership) {
+          return {
+            partyId: app.partyId,
+            selected: true,
+            proportion: existingOwnership.proportion * 100,
+          };
+        }
+        // If no ownerships defined, default to the applicant who holds the rental
+        if (!rental.ownerships && app.partyId === applicantId) {
+          return { partyId: app.partyId, selected: true, proportion: 100 };
+        }
+        return { partyId: app.partyId, selected: false, proportion: 0 };
+      }),
     });
+  };
+
+  const handleOwnershipToggle = (partyId: string) => {
+    const selectedCount = rentalForm.ownerships.filter(o => o.selected).length;
+    const currentOwnership = rentalForm.ownerships.find(o => o.partyId === partyId);
+    const isCurrentlySelected = currentOwnership?.selected;
+
+    // Don't allow deselecting if it's the only one selected
+    if (isCurrentlySelected && selectedCount <= 1) return;
+
+    setRentalForm(prev => {
+      const newOwnerships = prev.ownerships.map(o => {
+        if (o.partyId === partyId) {
+          return { ...o, selected: !o.selected, proportion: !o.selected ? 50 : 0 };
+        }
+        return o;
+      });
+
+      // Rebalance proportions among selected
+      const selectedOwnerships = newOwnerships.filter(o => o.selected);
+      const equalShare = 100 / selectedOwnerships.length;
+      return {
+        ...prev,
+        ownerships: newOwnerships.map(o =>
+          o.selected ? { ...o, proportion: equalShare } : o
+        ),
+      };
+    });
+  };
+
+  const handleOwnershipProportionChange = (partyId: string, proportion: number) => {
+    setRentalForm(prev => ({
+      ...prev,
+      ownerships: prev.ownerships.map(o =>
+        o.partyId === partyId ? { ...o, proportion: Math.min(100, Math.max(0, proportion)) } : o
+      ),
+    }));
   };
 
   const handleRentalFormSubmit = (applicantId: string) => {
@@ -95,6 +161,14 @@ export function IncomeSection({
       return; // Invalid amount
     }
 
+    // Build ownerships array from form data
+    const ownerships: RentalOwnership[] = rentalForm.ownerships
+      .filter(o => o.selected && o.proportion > 0)
+      .map(o => ({
+        partyId: o.partyId,
+        proportion: o.proportion / 100, // Convert percentage to decimal
+      }));
+
     if (editingRental) {
       // Update existing rental
       onUpdateRentalIncome(applicantId, editingRental, {
@@ -102,6 +176,7 @@ export function IncomeSection({
         propertyPostcode: rentalForm.propertyPostcode || undefined,
         proportionalAmount: amount,
         proportionalAmountFrequency: rentalForm.proportionalAmountFrequency,
+        ownerships: ownerships.length > 0 ? ownerships : undefined,
       });
     } else {
       // Add new rental
@@ -110,17 +185,18 @@ export function IncomeSection({
         propertyPostcode: rentalForm.propertyPostcode || undefined,
         proportionalAmount: amount,
         proportionalAmountFrequency: rentalForm.proportionalAmountFrequency,
+        ownerships: ownerships.length > 0 ? ownerships : undefined,
       });
     }
 
     setShowAddRentalForm(null);
-    setRentalForm(defaultRentalForm);
+    setRentalForm(createDefaultRentalForm(applicants, applicants[0]?.partyId ?? ''));
     setEditingRental(null);
   };
 
   const handleCancelRentalForm = () => {
     setShowAddRentalForm(null);
-    setRentalForm(defaultRentalForm);
+    setRentalForm(createDefaultRentalForm(applicants, applicants[0]?.partyId ?? ''));
     setEditingRental(null);
   };
 
@@ -450,6 +526,56 @@ export function IncomeSection({
                     </div>
                   </div>
 
+                  {/* Ownership selection - for shared rental income */}
+                  {applicants.length > 1 && (
+                    <div className="mb-4">
+                      <label className="block font-mono text-xs uppercase tracking-widest text-neutral-500 mb-2">
+                        Ownership Split
+                      </label>
+                      <div className="border border-[#111111] bg-white">
+                        {rentalForm.ownerships.map((ownership) => {
+                          const app = applicants.find(a => a.partyId === ownership.partyId);
+                          if (!app) return null;
+                          return (
+                            <div
+                              key={ownership.partyId}
+                              className="flex items-center gap-4 p-3 border-b border-neutral-200 last:border-b-0"
+                            >
+                              <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                <input
+                                  type="checkbox"
+                                  checked={ownership.selected}
+                                  onChange={() => handleOwnershipToggle(ownership.partyId)}
+                                  className="w-4 h-4 border-2 border-[#111111] rounded-none"
+                                />
+                                <span className="font-sans text-sm">{app.name}</span>
+                                <span className="font-mono text-xs text-neutral-500">
+                                  ({app.applicantType === 'PRIMARY_APPLICANT' ? 'Primary' : 'Secondary'})
+                                </span>
+                              </label>
+                              {ownership.selected && (
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="number"
+                                    value={ownership.proportion}
+                                    onChange={(e) => handleOwnershipProportionChange(ownership.partyId, parseFloat(e.target.value) || 0)}
+                                    min={0}
+                                    max={100}
+                                    className="w-16 px-2 py-1 text-right font-mono text-sm border-b-2 border-[#111111]"
+                                  />
+                                  <span className="font-mono text-sm">%</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="font-mono text-xs text-neutral-400 mt-1">
+                        Rental income can be shared between applicants
+                      </p>
+                    </div>
+                  )}
+
                   {/* Annual preview */}
                   {rentalForm.proportionalAmount && !isNaN(parseFloat(rentalForm.proportionalAmount)) && (
                     <div className="bg-white border border-[#111111] p-3 mb-4">
@@ -488,45 +614,61 @@ export function IncomeSection({
               {/* Existing rentals list */}
               {applicant.incomes.rentals.length > 0 ? (
                 <div className="space-y-3">
-                  {applicant.incomes.rentals.map((rental) => (
-                    <div key={rental.incomeId} className="border border-[#111111] p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-body text-base">{rental.propertyAddress || 'Investment Property'}</div>
-                          <div className="font-mono text-xs text-neutral-500 mt-1">
-                            Postcode {rental.propertyPostcode || '—'}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="font-mono text-xl font-bold">
-                              {formatCurrency(rental.proportionalAmount)}
-                              <span className="text-xs text-neutral-500 ml-1">
-                                {formatFrequency(rental.proportionalAmountFrequency)}
-                              </span>
+                  {applicant.incomes.rentals.map((rental) => {
+                    // Get ownership info for display
+                    const hasSharedOwnership = rental.ownerships && rental.ownerships.length > 1;
+                    const ownershipDisplay = rental.ownerships?.map(o => {
+                      const owner = applicants.find(a => a.partyId === o.partyId);
+                      return owner ? `${owner.name.split(' ')[0]} ${Math.round(o.proportion * 100)}%` : '';
+                    }).filter(Boolean).join(', ');
+
+                    return (
+                      <div key={rental.incomeId} className="border border-[#111111] p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-body text-base">{rental.propertyAddress || 'Investment Property'}</div>
+                            <div className="font-mono text-xs text-neutral-500 mt-1">
+                              Postcode {rental.propertyPostcode || '—'}
                             </div>
-                            <div className="font-mono text-xs text-neutral-500">
-                              {formatCurrency(toAnnual(rental.proportionalAmount, rental.proportionalAmountFrequency))} p.a.
-                            </div>
+                            {hasSharedOwnership && (
+                              <div className="mt-2">
+                                <span className="font-mono text-xs px-2 py-0.5 bg-purple-50 border border-purple-300 text-purple-700">
+                                  Shared: {ownershipDisplay}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex flex-col gap-1">
-                            <button
-                              onClick={() => handleEditRentalClick(applicant.partyId, rental)}
-                              className="px-2 py-1 text-xs font-mono uppercase border border-[#111111] hover:bg-[#111111] hover:text-white transition-all"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => onRemoveRentalIncome(applicant.partyId, rental.incomeId)}
-                              className="px-2 py-1 text-xs font-mono uppercase border border-[#CC0000] text-[#CC0000] hover:bg-[#CC0000] hover:text-white transition-all"
-                            >
-                              Remove
-                            </button>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <div className="font-mono text-xl font-bold">
+                                {formatCurrency(rental.proportionalAmount)}
+                                <span className="text-xs text-neutral-500 ml-1">
+                                  {formatFrequency(rental.proportionalAmountFrequency)}
+                                </span>
+                              </div>
+                              <div className="font-mono text-xs text-neutral-500">
+                                {formatCurrency(toAnnual(rental.proportionalAmount, rental.proportionalAmountFrequency))} p.a.
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <button
+                                onClick={() => handleEditRentalClick(applicant.partyId, rental)}
+                                className="px-2 py-1 text-xs font-mono uppercase border border-[#111111] hover:bg-[#111111] hover:text-white transition-all"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => onRemoveRentalIncome(applicant.partyId, rental.incomeId)}
+                                className="px-2 py-1 text-xs font-mono uppercase border border-[#CC0000] text-[#CC0000] hover:bg-[#CC0000] hover:text-white transition-all"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 showAddRentalForm !== applicant.partyId && (

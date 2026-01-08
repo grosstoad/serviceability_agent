@@ -8,16 +8,19 @@ import {
   ExpensesSection,
   LiabilitiesSection,
   ChangeLog,
+  ApplicantSection,
 } from './components';
 
 function App() {
   const {
     application,
     result,
-    changeLog,
+    netChanges,
     baseline,
     activeTab,
     updateLoan,
+    updateCollateral,
+    updateSplit,
     updateEmployment,
     addRentalIncome,
     updateRentalIncome,
@@ -25,6 +28,7 @@ function App() {
     updateExpense,
     updateDebt,
     updateMortgage,
+    updateApplicant,
     setActiveTab,
     resetToBaseline,
   } = useStore();
@@ -38,20 +42,28 @@ function App() {
       <Navigation
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        changeCount={changeLog.length}
+        changeCount={netChanges.length}
       />
 
       {/* Main content */}
       <main className="mx-auto max-w-screen-xl px-4 py-8">
-        <div className="grid grid-cols-12 gap-8">
-          {/* Main content area */}
-          <div className="col-span-12 lg:col-span-8 space-y-8">
+        {/* Full width for changes tab, otherwise standard layout */}
+        {activeTab === 'changes' ? (
+          <ChangeLog
+            changeLog={netChanges}
+            baseline={baseline}
+            currentSurplus={result?.netSurplusOrDeficit ?? 0}
+          />
+        ) : (
+          <div className="space-y-8">
             {/* Active section based on tab */}
             {activeTab === 'loan' && (
               <LoanSection
                 loan={application.loan}
                 collaterals={application.collaterals}
                 onUpdate={updateLoan}
+                onUpdateCollateral={updateCollateral}
+                onUpdateSplit={updateSplit}
               />
             )}
 
@@ -81,19 +93,15 @@ function App() {
                 onUpdateMortgage={updateMortgage}
               />
             )}
-          </div>
 
-          {/* Sidebar - Change Log */}
-          <aside className="col-span-12 lg:col-span-4">
-            <div className="lg:sticky lg:top-20">
-              <ChangeLog
-                changeLog={changeLog}
-                baseline={baseline}
-                currentSurplus={result?.netSurplusOrDeficit ?? 0}
+            {activeTab === 'applicants' && (
+              <ApplicantSection
+                applicants={application.applicants}
+                onUpdateApplicant={updateApplicant}
               />
-            </div>
-          </aside>
-        </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Footer */}

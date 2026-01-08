@@ -5,3 +5,5 @@ export { IncomeSection } from './IncomeSection';
 export { ExpensesSection } from './ExpensesSection';
 export { LiabilitiesSection } from './LiabilitiesSection';
 export { ChangeLog } from './ChangeLog';
+export { ConfirmDialog } from './ConfirmDialog';
+export { ApplicantSection } from './ApplicantSection';
