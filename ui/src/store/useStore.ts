@@ -1,15 +1,18 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type {
   ApplicationState,
   CalculationResult,
   ChangeLogEntry,
   Scenario,
   LoanDetails,
+  LoanSplit,
+  Collateral,
   Employment,
   Expense,
   OtherDebt,
   OtherMortgage,
   RentalIncome,
+  Applicant,
 } from '../types';
 import {
   mockApplication,
@@ -19,16 +22,41 @@ import {
   formatCurrency,
 } from '../data/mockData';
 
+// Helper to get a deep value from an object by path
+const getValueByPath = (obj: unknown, path: string): unknown => {
+  const parts = path.split('.');
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+};
+
+// Helper to compare values (handles objects)
+const valuesEqual = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (typeof a === 'number' && typeof b === 'number') {
+    return Math.abs(a - b) < 0.001;
+  }
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+export type TabType = 'loan' | 'income' | 'expenses' | 'liabilities' | 'applicants' | 'changes';
+
 interface Store {
   // State
   application: ApplicationState;
   result: CalculationResult | null;
   changeLog: ChangeLogEntry[];
+  netChanges: ChangeLogEntry[];
   baseline: Scenario | null;
-  activeTab: 'loan' | 'income' | 'expenses' | 'liabilities';
+  activeTab: TabType;
 
   // Actions
   updateLoan: (updates: Partial<LoanDetails>) => void;
+  updateCollateral: (collateralId: string, updates: Partial<Collateral>) => void;
+  updateSplit: (splitId: string, updates: Partial<LoanSplit>) => void;
   updateEmployment: (applicantId: string, employmentId: string, updates: Partial<Employment>) => void;
   addRentalIncome: (applicantId: string, rental: Omit<RentalIncome, 'incomeId'>) => void;
   updateRentalIncome: (applicantId: string, incomeId: string, updates: Partial<RentalIncome>) => void;
@@ -36,8 +64,9 @@ interface Store {
   updateExpense: (applicantId: string, expenseId: string, updates: Partial<Expense>) => void;
   updateDebt: (debtId: string, updates: Partial<OtherDebt>) => void;
   updateMortgage: (mortgageId: string, updates: Partial<OtherMortgage>) => void;
+  updateApplicant: (applicantId: string, updates: Partial<Applicant>) => void;
   addChangeLogEntry: (entry: Omit<ChangeLogEntry, 'id' | 'timestamp'>) => void;
-  setActiveTab: (tab: 'loan' | 'income' | 'expenses' | 'liabilities') => void;
+  setActiveTab: (tab: TabType) => void;
   resetToBaseline: () => void;
 }
 
@@ -46,7 +75,58 @@ export function useStore(): Store {
   const [result, setResult] = useState<CalculationResult | null>(mockCalculationResult);
   const [changeLog, setChangeLog] = useState<ChangeLogEntry[]>(mockChangeLog);
   const [baseline] = useState<Scenario | null>(mockBaselineScenario);
-  const [activeTab, setActiveTab] = useState<'loan' | 'income' | 'expenses' | 'liabilities'>('loan');
+  const [activeTab, setActiveTab] = useState<TabType>('loan');
+
+  // Compute net changes - only show changes where current value differs from baseline
+  const netChanges = useMemo(() => {
+    if (!baseline) return changeLog;
+
+    // Group changes by field and keep only the latest for each field
+    const latestByField = new Map<string, ChangeLogEntry>();
+    // Process in reverse order (oldest first) so latest overwrites
+    [...changeLog].reverse().forEach(entry => {
+      latestByField.set(entry.field, entry);
+    });
+
+    // Filter out changes where current value matches baseline
+    const filtered: ChangeLogEntry[] = [];
+    latestByField.forEach((entry) => {
+      // Get the baseline value for this field
+      const baselineValue = getValueByPath(baseline.application, entry.field);
+      // Get the current value (entry.newValue)
+      const currentValue = entry.newValue;
+
+      // Format baseline value for comparison
+      let formattedBaseline: string | number | null = null;
+      if (typeof baselineValue === 'number') {
+        // Check if this is a currency field
+        if (entry.field.includes('Amount') || entry.field.includes('salary') ||
+            entry.field.includes('bonus') || entry.field.includes('Value') ||
+            entry.field.includes('balance') || entry.field.includes('limit')) {
+          formattedBaseline = formatCurrency(baselineValue);
+        } else {
+          formattedBaseline = baselineValue;
+        }
+      } else if (baselineValue !== undefined && baselineValue !== null) {
+        formattedBaseline = String(baselineValue);
+      }
+
+      // Only include if values differ from baseline
+      if (!valuesEqual(currentValue, formattedBaseline) &&
+          !valuesEqual(currentValue, baselineValue)) {
+        filtered.push({
+          ...entry,
+          // Update previousValue to show baseline value
+          previousValue: formattedBaseline,
+        });
+      }
+    });
+
+    // Sort by timestamp (newest first)
+    return filtered.sort((a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [changeLog, baseline]);
 
   // Simulate API recalculation (in reality this would call the API)
   const simulateRecalculation = useCallback(() => {
@@ -107,6 +187,126 @@ export function useStore(): Store {
     });
 
     // Simulate recalculation
+    simulateRecalculation();
+  }, [addChangeLogEntry, simulateRecalculation]);
+
+  const updateCollateral = useCallback((
+    collateralId: string,
+    updates: Partial<Collateral>
+  ) => {
+    setApplication((prev) => {
+      const newCollaterals = prev.collaterals.map((col) => {
+        if (col.id !== collateralId) return col;
+
+        Object.keys(updates).forEach((key) => {
+          const oldVal = col[key as keyof Collateral];
+          const newVal = updates[key as keyof Collateral];
+          if (oldVal !== newVal && key !== 'id') {
+            addChangeLogEntry({
+              field: `collaterals.${collateralId}.${key}`,
+              category: 'loan',
+              description: `Security property ${key === 'value' ? 'value' : key} updated`,
+              previousValue: typeof oldVal === 'number' ? formatCurrency(oldVal) : (oldVal ?? null),
+              newValue: typeof newVal === 'number' ? formatCurrency(newVal) : (newVal ?? null),
+            });
+          }
+        });
+
+        return { ...col, ...updates };
+      });
+
+      return { ...prev, collaterals: newCollaterals };
+    });
+
+    simulateRecalculation();
+  }, [addChangeLogEntry, simulateRecalculation]);
+
+  const updateSplit = useCallback((
+    splitId: string,
+    updates: Partial<LoanSplit>
+  ) => {
+    setApplication((prev) => {
+      const newSplits = (prev.loan.splits ?? []).map((split) => {
+        if (split.id !== splitId) return split;
+
+        Object.keys(updates).forEach((key) => {
+          const oldVal = split[key as keyof LoanSplit];
+          const newVal = updates[key as keyof LoanSplit];
+          if (oldVal !== newVal && key !== 'id') {
+            const fieldLabels: Record<string, string> = {
+              amount: 'amount',
+              interestRate: 'interest rate',
+              loanTerm: 'term',
+              interestOnlyPeriod: 'IO period',
+            };
+            addChangeLogEntry({
+              field: `loan.splits.${splitId}.${key}`,
+              category: 'loan',
+              description: `${split.productName} ${fieldLabels[key] || key} updated`,
+              previousValue: typeof oldVal === 'number' && key === 'amount'
+                ? formatCurrency(oldVal)
+                : oldVal !== undefined && oldVal !== null ? String(oldVal) : null,
+              newValue: typeof newVal === 'number' && key === 'amount'
+                ? formatCurrency(newVal)
+                : newVal !== undefined && newVal !== null ? String(newVal) : null,
+            });
+          }
+        });
+
+        return { ...split, ...updates };
+      });
+
+      // Recalculate total loan amount from splits
+      const newLoanAmount = newSplits.reduce((sum, s) => sum + s.amount, 0);
+
+      return {
+        ...prev,
+        loan: {
+          ...prev.loan,
+          splits: newSplits,
+          loanAmount: newLoanAmount,
+        },
+      };
+    });
+
+    simulateRecalculation();
+  }, [addChangeLogEntry, simulateRecalculation]);
+
+  const updateApplicant = useCallback((
+    applicantId: string,
+    updates: Partial<Applicant>
+  ) => {
+    setApplication((prev) => {
+      const newApplicants = prev.applicants.map((app) => {
+        if (app.partyId !== applicantId) return app;
+
+        Object.keys(updates).forEach((key) => {
+          if (key === 'incomes' || key === 'expenses' || key === 'partyId') return;
+          const oldVal = app[key as keyof Applicant];
+          const newVal = updates[key as keyof Applicant];
+          if (oldVal !== newVal) {
+            const fieldLabels: Record<string, string> = {
+              name: 'name',
+              maritalStatus: 'marital status',
+              noOfDependents: 'number of dependents',
+              addressPostcode: 'postcode',
+            };
+            addChangeLogEntry({
+              field: `applicants.${applicantId}.${key}`,
+              category: 'applicant',
+              description: `${app.name}'s ${fieldLabels[key] || key} updated`,
+              previousValue: oldVal !== undefined && oldVal !== null ? String(oldVal) : null,
+              newValue: newVal !== undefined && newVal !== null ? String(newVal) : null,
+            });
+          }
+        });
+
+        return { ...app, ...updates };
+      });
+
+      return { ...prev, applicants: newApplicants };
+    });
+
     simulateRecalculation();
   }, [addChangeLogEntry, simulateRecalculation]);
 
@@ -204,15 +404,16 @@ export function useStore(): Store {
           if (rental.incomeId !== incomeId) return rental;
 
           Object.keys(updates).forEach((key) => {
+            if (key === 'incomeId' || key === 'ownerships') return; // Skip ownership changes in log
             const oldVal = rental[key as keyof RentalIncome];
             const newVal = updates[key as keyof RentalIncome];
-            if (oldVal !== newVal && key !== 'incomeId') {
+            if (oldVal !== newVal) {
               addChangeLogEntry({
                 field: `applicants.${applicantId}.rentals.${incomeId}.${key}`,
                 category: 'income',
                 description: `${app.name}'s rental ${key === 'proportionalAmount' ? 'amount' : key.replace(/([A-Z])/g, ' $1').toLowerCase()} updated`,
-                previousValue: typeof oldVal === 'number' ? formatCurrency(oldVal) : (oldVal ?? null),
-                newValue: typeof newVal === 'number' ? formatCurrency(newVal) : (newVal ?? null),
+                previousValue: typeof oldVal === 'number' ? formatCurrency(oldVal) : (typeof oldVal === 'string' ? oldVal : null),
+                newValue: typeof newVal === 'number' ? formatCurrency(newVal) : (typeof newVal === 'string' ? newVal : null),
               });
             }
           });
@@ -381,9 +582,12 @@ export function useStore(): Store {
     application,
     result,
     changeLog,
+    netChanges,
     baseline,
     activeTab,
     updateLoan,
+    updateCollateral,
+    updateSplit,
     updateEmployment,
     addRentalIncome,
     updateRentalIncome,
@@ -391,6 +595,7 @@ export function useStore(): Store {
     updateExpense,
     updateDebt,
     updateMortgage,
+    updateApplicant,
     addChangeLogEntry,
     setActiveTab,
     resetToBaseline,

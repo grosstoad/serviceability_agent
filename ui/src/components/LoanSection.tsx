@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import type { LoanDetails, Collateral } from '../types';
+import type { LoanDetails, Collateral, LoanSplit } from '../types';
 import { formatCurrency } from '../data/mockData';
 
 interface LoanSectionProps {
   loan: LoanDetails;
   collaterals: Collateral[];
   onUpdate: (updates: Partial<LoanDetails>) => void;
+  onUpdateCollateral?: (collateralId: string, updates: Partial<Collateral>) => void;
+  onUpdateSplit?: (splitId: string, updates: Partial<LoanSplit>) => void;
 }
 
-export function LoanSection({ loan, collaterals, onUpdate }: LoanSectionProps) {
+export function LoanSection({ loan, collaterals, onUpdate, onUpdateCollateral, onUpdateSplit }: LoanSectionProps) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
 
@@ -26,9 +28,45 @@ export function LoanSection({ loan, collaterals, onUpdate }: LoanSectionProps) {
     setTempValue('');
   };
 
+  const handleSaveCollateral = (collateralId: string, field: keyof Collateral) => {
+    const numValue = parseFloat(tempValue);
+    if (!isNaN(numValue) && onUpdateCollateral) {
+      onUpdateCollateral(collateralId, { [field]: numValue });
+    }
+    setEditingField(null);
+    setTempValue('');
+  };
+
+  const handleSaveSplit = (splitId: string, field: keyof LoanSplit) => {
+    const numValue = parseFloat(tempValue);
+    if (!isNaN(numValue) && onUpdateSplit) {
+      onUpdateSplit(splitId, { [field]: numValue });
+    }
+    setEditingField(null);
+    setTempValue('');
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent, field: keyof LoanDetails) => {
     if (e.key === 'Enter') {
       handleSave(field);
+    } else if (e.key === 'Escape') {
+      setEditingField(null);
+      setTempValue('');
+    }
+  };
+
+  const handleKeyDownCollateral = (e: React.KeyboardEvent, collateralId: string, field: keyof Collateral) => {
+    if (e.key === 'Enter') {
+      handleSaveCollateral(collateralId, field);
+    } else if (e.key === 'Escape') {
+      setEditingField(null);
+      setTempValue('');
+    }
+  };
+
+  const handleKeyDownSplit = (e: React.KeyboardEvent, splitId: string, field: keyof LoanSplit) => {
+    if (e.key === 'Enter') {
+      handleSaveSplit(splitId, field);
     } else if (e.key === 'Escape') {
       setEditingField(null);
       setTempValue('');
@@ -179,16 +217,139 @@ export function LoanSection({ loan, collaterals, onUpdate }: LoanSectionProps) {
                       Postcode {col.postcode}
                     </div>
                   </div>
-                  {col.value && (
-                    <div className="text-right">
+                  {col.value !== undefined && (
+                    <div
+                      className="text-right cursor-pointer hard-shadow-hover p-2 -m-2"
+                      onClick={() => handleEdit(`collateral-${col.id}-value`, col.value!)}
+                    >
                       <div className="font-mono text-xs uppercase tracking-widest text-neutral-500">
                         Est. Value
                       </div>
-                      <div className="font-mono text-xl font-bold">
-                        {formatCurrency(col.value)}
-                      </div>
+                      {editingField === `collateral-${col.id}-value` ? (
+                        <input
+                          type="number"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={() => handleSaveCollateral(col.id, 'value')}
+                          onKeyDown={(e) => handleKeyDownCollateral(e, col.id, 'value')}
+                          className="w-32 font-mono text-xl font-bold bg-[#F0F0F0] border-b-2 border-[#111111] px-0 text-right"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="font-mono text-xl font-bold">
+                          {formatCurrency(col.value)}
+                        </div>
+                      )}
                     </div>
                   )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Loan Splits / Products */}
+        {loan.splits && loan.splits.length > 0 && (
+          <div className="mt-6">
+            <h3 className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-3">
+              Loan Products
+            </h3>
+            <div className="space-y-3">
+              {loan.splits.map((split) => (
+                <div key={split.id} className="border border-[#111111] p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="font-body text-base font-semibold">{split.productName}</div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className={`font-mono text-xs px-2 py-0.5 border ${split.isFixed ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-green-50 border-green-300 text-green-700'}`}>
+                          {split.isFixed ? `FIXED ${split.fixedPeriod}yr` : 'VARIABLE'}
+                        </span>
+                        <span className="font-mono text-xs px-2 py-0.5 border bg-neutral-50 border-neutral-300">
+                          {split.repaymentType}
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="text-right cursor-pointer hard-shadow-hover p-2 -m-2"
+                      onClick={() => handleEdit(`split-${split.id}-amount`, split.amount)}
+                    >
+                      {editingField === `split-${split.id}-amount` ? (
+                        <input
+                          type="number"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={() => handleSaveSplit(split.id, 'amount')}
+                          onKeyDown={(e) => handleKeyDownSplit(e, split.id, 'amount')}
+                          className="w-32 font-mono text-xl font-bold bg-[#F0F0F0] border-b-2 border-[#111111] px-0 text-right"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="font-mono text-xl font-bold">
+                          {formatCurrency(split.amount)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 pt-3 border-t border-dashed border-neutral-300">
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => handleEdit(`split-${split.id}-interestRate`, split.interestRate)}
+                    >
+                      <div className="font-mono text-xs uppercase tracking-widest text-neutral-500">Rate</div>
+                      {editingField === `split-${split.id}-interestRate` ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={() => handleSaveSplit(split.id, 'interestRate')}
+                          onKeyDown={(e) => handleKeyDownSplit(e, split.id, 'interestRate')}
+                          className="w-16 font-mono text-base font-bold bg-[#F0F0F0] border-b-2 border-[#111111] px-0"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="font-mono text-base font-bold">{split.interestRate.toFixed(2)}%</div>
+                      )}
+                    </div>
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => handleEdit(`split-${split.id}-loanTerm`, split.loanTerm)}
+                    >
+                      <div className="font-mono text-xs uppercase tracking-widest text-neutral-500">Term</div>
+                      {editingField === `split-${split.id}-loanTerm` ? (
+                        <input
+                          type="number"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={() => handleSaveSplit(split.id, 'loanTerm')}
+                          onKeyDown={(e) => handleKeyDownSplit(e, split.id, 'loanTerm')}
+                          className="w-12 font-mono text-base font-bold bg-[#F0F0F0] border-b-2 border-[#111111] px-0"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="font-mono text-base font-bold">{split.loanTerm} yrs</div>
+                      )}
+                    </div>
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => handleEdit(`split-${split.id}-interestOnlyPeriod`, split.interestOnlyPeriod ?? 0)}
+                    >
+                      <div className="font-mono text-xs uppercase tracking-widest text-neutral-500">IO Period</div>
+                      {editingField === `split-${split.id}-interestOnlyPeriod` ? (
+                        <input
+                          type="number"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={() => handleSaveSplit(split.id, 'interestOnlyPeriod')}
+                          onKeyDown={(e) => handleKeyDownSplit(e, split.id, 'interestOnlyPeriod')}
+                          className="w-12 font-mono text-base font-bold bg-[#F0F0F0] border-b-2 border-[#111111] px-0"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="font-mono text-base font-bold">{split.interestOnlyPeriod ?? 0} yrs</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

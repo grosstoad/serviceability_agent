@@ -93,6 +93,12 @@ export interface Employment {
   carAllowanceFrequency?: Frequency;
 }
 
+// Rental income ownership share
+export interface RentalOwnership {
+  partyId: string;
+  proportion: number; // 0-1
+}
+
 // Rental income
 export interface RentalIncome {
   incomeId: string;
@@ -100,6 +106,7 @@ export interface RentalIncome {
   proportionalAmount: number;
   proportionalAmountFrequency: Frequency;
   propertyPostcode?: string;
+  ownerships?: RentalOwnership[]; // If not specified, assumed 100% to the applicant holding it
 }
 
 // Other income
@@ -183,6 +190,19 @@ export interface Collateral {
   value?: number;
 }
 
+// Loan product/split
+export interface LoanSplit {
+  id: string;
+  productName: string;
+  amount: number;
+  interestRate: number;
+  loanTerm: number;
+  interestOnlyPeriod?: number;
+  repaymentType: RepaymentType;
+  isFixed?: boolean;
+  fixedPeriod?: number;
+}
+
 // Loan details
 export interface LoanDetails {
   loanAmount: number;
@@ -191,6 +211,7 @@ export interface LoanDetails {
   interestOnlyPeriod?: number;
   negativeGearingPercentage?: number;
   shouldUseLowerRateBuffer?: boolean;
+  splits?: LoanSplit[];
 }
 
 // Full application state

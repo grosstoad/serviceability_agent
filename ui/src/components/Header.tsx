@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { CalculationResult, ApplicationState } from '../types';
 import { formatCurrency } from '../data/mockData';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface HeaderProps {
   application: ApplicationState;
@@ -8,6 +10,16 @@ interface HeaderProps {
 }
 
 export function Header({ application, result, onReset }: HeaderProps) {
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const handleResetClick = () => {
+    setShowResetConfirm(true);
+  };
+
+  const handleConfirmReset = () => {
+    onReset();
+    setShowResetConfirm(false);
+  };
   const surplus = result?.netSurplusOrDeficit ?? 0;
   const status = surplus >= 0 ? 'APPROVED' : surplus > -2000 ? 'REFER' : 'DECLINED';
 
@@ -125,7 +137,7 @@ export function Header({ application, result, onReset }: HeaderProps) {
               {/* Actions */}
               <div className="mt-6 flex gap-4">
                 <button
-                  onClick={onReset}
+                  onClick={handleResetClick}
                   className="flex-1 border border-[#111111] bg-transparent px-4 py-3 text-xs font-sans uppercase tracking-widest hover:bg-[#111111] hover:text-[#F9F9F7]"
                 >
                   Reset
@@ -158,6 +170,17 @@ export function Header({ application, result, onReset }: HeaderProps) {
           </div>
         </div>
       </div>
+
+      {/* Reset Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showResetConfirm}
+        title="Reset to Baseline"
+        message="Are you sure you want to reset all changes? This will revert to the original application data and clear all modifications."
+        confirmLabel="Reset"
+        cancelLabel="Keep Changes"
+        onConfirm={handleConfirmReset}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </header>
   );
 }

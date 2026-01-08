@@ -12,6 +12,29 @@ export const mockApplication: ApplicationState = {
     loanTerm: 30,
     interestRateOngoing: 6.29,
     interestOnlyPeriod: 0,
+    splits: [
+      {
+        id: 'split-001',
+        productName: 'Variable Rate Home Loan',
+        amount: 650000,
+        interestRate: 6.29,
+        loanTerm: 30,
+        interestOnlyPeriod: 0,
+        repaymentType: 'P&I',
+        isFixed: false,
+      },
+      {
+        id: 'split-002',
+        productName: 'Fixed Rate Home Loan',
+        amount: 200000,
+        interestRate: 5.99,
+        loanTerm: 30,
+        interestOnlyPeriod: 0,
+        repaymentType: 'P&I',
+        isFixed: true,
+        fixedPeriod: 3,
+      },
+    ],
   },
   applicants: [
     {
